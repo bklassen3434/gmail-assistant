@@ -85,9 +85,26 @@ IMPORTANT: Always write emails in this user's personal style. Match their tone, 
         </button>
         <div id="claude-style-content" style="display: none;">
           <div id="style-consent" class="style-consent">
-            <p>Claude can learn your writing style by reading your sent emails.</p>
-            <p class="style-privacy">Your emails are only sent to Claude's API for analysis and are not stored anywhere else.</p>
-            <button id="claude-scan-style" class="btn-analyze">Scan My Sent Emails</button>
+            <p>Claude can learn your writing style from your sent emails.</p>
+            <div class="style-steps">
+              <div class="style-step">
+                <span class="step-num">1</span>
+                <span>Click below to open your Sent folder</span>
+              </div>
+              <div class="style-step">
+                <span class="step-num">2</span>
+                <span>Click on 3-5 emails to expand them</span>
+              </div>
+              <div class="style-step">
+                <span class="step-num">3</span>
+                <span>Click "Scan" and we'll analyze your style</span>
+              </div>
+            </div>
+            <div class="style-buttons">
+              <button id="claude-open-sent" class="btn-secondary-style">Open Sent Folder</button>
+              <button id="claude-scan-style" class="btn-analyze">Scan Visible Emails</button>
+            </div>
+            <p class="style-privacy">Emails are only sent to Claude for analysis, not stored elsewhere.</p>
           </div>
           <div id="style-scanning" style="display: none;">
             <div class="style-loading">Scanning your sent emails...</div>
