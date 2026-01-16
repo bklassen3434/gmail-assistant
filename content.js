@@ -295,7 +295,7 @@ IMPORTANT: Always write emails in this user's personal style. Match their tone, 
         throw new Error('Not enough sent emails found. Please send a few emails first.');
       }
 
-      styleScanning.querySelector('.style-loading').textContent = `Found ${emails.length} emails. Analyzing your style...`;
+      styleScanning.querySelector('.style-loading').textContent = 'Analyzing your writing style...';
 
       // Analyze with Claude
       const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -337,7 +337,7 @@ Respond with ONLY the style guide, no preamble. Be specific about their unique v
       styleStatus.textContent = '✓ Active';
       styleStatus.className = 'style-active';
       styleScanning.style.display = 'none';
-      styleResult.innerHTML = `<div class="style-success"><strong>Style learned from ${emails.length} emails!</strong></div>`;
+      styleResult.innerHTML = `<div class="style-success"><strong>Style learned!</strong></div>`;
       styleActionsRow.style.display = 'flex';
 
     } catch (error) {
