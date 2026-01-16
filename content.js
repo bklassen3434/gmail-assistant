@@ -84,30 +84,40 @@ IMPORTANT: Always write emails in this user's personal style. Match their tone, 
           <span id="style-status"></span>
         </button>
         <div id="claude-style-content" style="display: none;">
-          <div id="style-consent" class="style-consent">
-            <p>Claude can learn your writing style from your sent emails.</p>
-            <div class="style-steps">
-              <div class="style-step">
-                <span class="step-num">1</span>
-                <span>Click below to open your Sent folder</span>
-              </div>
-              <div class="style-step">
-                <span class="step-num">2</span>
-                <span>Click on 3-5 emails to expand them</span>
-              </div>
-              <div class="style-step">
-                <span class="step-num">3</span>
-                <span>Click "Scan" and we'll analyze your style</span>
+          <div id="style-setup" class="style-setup">
+            <div class="setup-header">
+              <span class="setup-icon">🔧</span>
+              <div>
+                <strong>One-time Google Setup</strong>
+                <span class="setup-time">~3 minutes</span>
               </div>
             </div>
-            <div class="style-buttons">
-              <button id="claude-open-sent" class="btn-secondary-style">Open Sent Folder</button>
-              <button id="claude-scan-style" class="btn-analyze">Scan Visible Emails</button>
+            <ol class="setup-steps">
+              <li><a href="https://console.cloud.google.com/projectcreate" target="_blank">Create a Google Cloud project</a></li>
+              <li><a href="https://console.cloud.google.com/apis/library/gmail.googleapis.com" target="_blank">Enable the Gmail API</a></li>
+              <li><a href="https://console.cloud.google.com/apis/credentials/consent" target="_blank">Configure OAuth consent</a> (External, add gmail.readonly scope, add yourself as test user)</li>
+              <li><a href="https://console.cloud.google.com/apis/credentials" target="_blank">Create OAuth credentials</a> (Web app, add redirect URI below)</li>
+            </ol>
+            <div class="redirect-uri-section">
+              <label class="input-label">Your Redirect URI</label>
+              <div class="redirect-uri-box">
+                <code id="redirect-uri">Loading...</code>
+                <button id="copy-redirect-uri" class="btn-copy">Copy</button>
+              </div>
             </div>
-            <p class="style-privacy">Emails are only sent to Claude for analysis, not stored elsewhere.</p>
+            <div class="client-id-section">
+              <label class="input-label">Your Client ID</label>
+              <input type="text" id="google-client-id" class="client-id-input" placeholder="xxxx.apps.googleusercontent.com">
+              <button id="save-google-client" class="btn-save-client">Save Client ID</button>
+            </div>
+          </div>
+          <div id="style-connect" class="style-consent" style="display: none;">
+            <p>Ready to scan your sent emails!</p>
+            <p class="style-privacy">Click below to authorize access to your Gmail. We only read sent emails to learn your style.</p>
+            <button id="claude-connect-gmail" class="btn-analyze">Connect Gmail & Scan</button>
           </div>
           <div id="style-scanning" style="display: none;">
-            <div class="style-loading">Scanning your sent emails...</div>
+            <div class="style-loading">Fetching your sent emails...</div>
           </div>
           <div id="style-result"></div>
           <div class="style-actions" style="display: none;" id="style-actions-row">
@@ -155,11 +165,16 @@ IMPORTANT: Always write emails in this user's personal style. Match their tone, 
   const phaseIndicator = document.getElementById('claude-phase-indicator');
   const styleToggle = document.getElementById('claude-style-toggle');
   const styleContent = document.getElementById('claude-style-content');
-  const scanStyleBtn = document.getElementById('claude-scan-style');
+  const styleSetup = document.getElementById('style-setup');
+  const styleConnect = document.getElementById('style-connect');
+  const redirectUriEl = document.getElementById('redirect-uri');
+  const copyRedirectBtn = document.getElementById('copy-redirect-uri');
+  const googleClientIdInput = document.getElementById('google-client-id');
+  const saveGoogleClientBtn = document.getElementById('save-google-client');
+  const connectGmailBtn = document.getElementById('claude-connect-gmail');
   const rescanStyleBtn = document.getElementById('claude-rescan-style');
   const clearStyleBtn = document.getElementById('claude-clear-style');
   const styleStatus = document.getElementById('style-status');
-  const styleConsent = document.getElementById('style-consent');
   const styleScanning = document.getElementById('style-scanning');
   const styleResult = document.getElementById('style-result');
   const styleActionsRow = document.getElementById('style-actions-row');
@@ -180,17 +195,35 @@ IMPORTANT: Always write emails in this user's personal style. Match their tone, 
     }
   });
 
-  // Load saved style profile
-  browser.storage.local.get('claudeStyleProfile').then(result => {
-    if (result.claudeStyleProfile) {
-      userStyleProfile = result.claudeStyleProfile;
+  // Initialize style section
+  async function initStyleSection() {
+    // Get redirect URL from background script
+    const response = await browser.runtime.sendMessage({ action: 'getRedirectURL' });
+    if (response && response.redirectURL) {
+      redirectUriEl.textContent = response.redirectURL;
+    }
+
+    // Check auth status
+    const authStatus = await browser.runtime.sendMessage({ action: 'checkAuth' });
+
+    // Load saved style profile
+    const stored = await browser.storage.local.get('claudeStyleProfile');
+    if (stored.claudeStyleProfile) {
+      userStyleProfile = stored.claudeStyleProfile;
       styleStatus.textContent = '✓ Active';
       styleStatus.className = 'style-active';
-      styleConsent.style.display = 'none';
-      styleResult.innerHTML = `<div class="style-success"><strong>Your style is active!</strong><br><br>${userStyleProfile.replace(/\n/g, '<br>')}</div>`;
+      styleSetup.style.display = 'none';
+      styleConnect.style.display = 'none';
+      styleResult.innerHTML = `<div class="style-success"><strong>Your writing style is active!</strong></div>`;
       styleActionsRow.style.display = 'flex';
+    } else if (authStatus.hasClientId) {
+      // Has client ID but no style yet
+      styleSetup.style.display = 'none';
+      styleConnect.style.display = 'block';
     }
-  });
+  }
+
+  initStyleSection();
 
   // Style toggle
   styleToggle.addEventListener('click', () => {
@@ -199,61 +232,72 @@ IMPORTANT: Always write emails in this user's personal style. Match their tone, 
     styleToggle.querySelector('.style-toggle-icon').textContent = isOpen ? '▶' : '▼';
   });
 
-  // Function to grab sent emails from Gmail
-  function grabSentEmails() {
-    const emails = [];
+  // Copy redirect URI
+  copyRedirectBtn.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(redirectUriEl.textContent);
+      copyRedirectBtn.textContent = '✓ Copied!';
+      setTimeout(() => { copyRedirectBtn.textContent = 'Copy'; }, 2000);
+    } catch (e) {
+      copyRedirectBtn.textContent = 'Failed';
+    }
+  });
 
-    // Try to find sent emails in the current view
-    // Gmail marks sent emails with specific data attributes
-    const emailContainers = document.querySelectorAll('div[data-message-id]');
-
-    emailContainers.forEach(container => {
-      const bodyEl = container.querySelector('.a3s.aiL');
-      if (bodyEl) {
-        const text = bodyEl.textContent.trim();
-        if (text.length > 50 && text.length < 5000) {
-          emails.push(text);
-        }
-      }
-    });
-
-    // Also try to grab from expanded email threads
-    const expandedEmails = document.querySelectorAll('.ii.gt div[dir="ltr"], .ii.gt div[dir="auto"]');
-    expandedEmails.forEach(el => {
-      const text = el.textContent.trim();
-      if (text.length > 50 && text.length < 5000 && !emails.includes(text)) {
-        emails.push(text);
-      }
-    });
-
-    return emails.slice(0, 5); // Return max 5 emails
-  }
-
-  // Scan and analyze style
-  async function scanAndAnalyzeStyle() {
-    if (!apiKey) {
-      styleResult.innerHTML = '<div class="style-error">Please save your API key first.</div>';
+  // Save Google Client ID
+  saveGoogleClientBtn.addEventListener('click', async () => {
+    const clientId = googleClientIdInput.value.trim();
+    if (!clientId || !clientId.includes('.apps.googleusercontent.com')) {
+      styleResult.innerHTML = '<div class="style-error">Please enter a valid Client ID (should end with .apps.googleusercontent.com)</div>';
       return;
     }
 
-    styleConsent.style.display = 'none';
+    await browser.runtime.sendMessage({ action: 'setClientId', clientId });
+    googleClientIdInput.value = '••••••••••••••••';
+    styleSetup.style.display = 'none';
+    styleConnect.style.display = 'block';
+    styleResult.innerHTML = '<div class="style-success">Client ID saved! Now connect your Gmail.</div>';
+  });
+
+  // Connect Gmail and scan emails
+  async function connectAndScan() {
+    if (!apiKey) {
+      styleResult.innerHTML = '<div class="style-error">Please save your Claude API key first.</div>';
+      return;
+    }
+
+    styleConnect.style.display = 'none';
     styleScanning.style.display = 'block';
+    styleScanning.querySelector('.style-loading').textContent = 'Connecting to Gmail...';
     styleResult.innerHTML = '';
 
-    // First, try to grab emails from current view
-    let emails = grabSentEmails();
-
-    if (emails.length < 2) {
-      // Not enough emails in current view - guide user
-      styleScanning.style.display = 'none';
-      styleConsent.style.display = 'block';
-      styleResult.innerHTML = '<div class="style-error"><strong>Need more emails!</strong><br><br>Please open your <strong>Sent</strong> folder and click on a few emails to expand them, then try again.</div>';
-      return;
-    }
-
-    styleScanning.querySelector('.style-loading').textContent = `Found ${emails.length} emails. Analyzing your style...`;
-
     try {
+      // Authorize with Google
+      const authResult = await browser.runtime.sendMessage({ action: 'authorize' });
+
+      if (!authResult.success) {
+        throw new Error(authResult.error === 'NO_CLIENT_ID' ?
+          'Please set up your Google Client ID first.' : authResult.error);
+      }
+
+      styleScanning.querySelector('.style-loading').textContent = 'Fetching your sent emails...';
+
+      // Fetch emails
+      const emailResult = await browser.runtime.sendMessage({ action: 'fetchEmails', maxResults: 20 });
+
+      if (!emailResult.success) {
+        throw new Error(emailResult.error === 'TOKEN_EXPIRED' ?
+          'Session expired. Please try again.' : emailResult.error);
+      }
+
+      const emails = emailResult.emails;
+
+      if (emails.length < 2) {
+        throw new Error('Not enough sent emails found. Please send a few emails first.');
+      }
+
+      styleScanning.querySelector('.style-loading').textContent = `Found ${emails.length} emails. Analyzing your style...`;
+
+      // Analyze with Claude
       const response = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: {
@@ -283,7 +327,7 @@ Respond with ONLY the style guide, no preamble. Be specific about their unique v
       });
 
       if (!response.ok) {
-        throw new Error('API request failed');
+        throw new Error('Claude API request failed');
       }
 
       const data = await response.json();
@@ -293,36 +337,36 @@ Respond with ONLY the style guide, no preamble. Be specific about their unique v
       styleStatus.textContent = '✓ Active';
       styleStatus.className = 'style-active';
       styleScanning.style.display = 'none';
-      styleResult.innerHTML = `<div class="style-success"><strong>Style learned from ${emails.length} emails!</strong><br><br>${userStyleProfile.replace(/\n/g, '<br>')}</div>`;
+      styleResult.innerHTML = `<div class="style-success"><strong>Style learned from ${emails.length} emails!</strong></div>`;
       styleActionsRow.style.display = 'flex';
 
     } catch (error) {
       styleScanning.style.display = 'none';
-      styleConsent.style.display = 'block';
+      styleConnect.style.display = 'block';
       styleResult.innerHTML = `<div class="style-error">Error: ${error.message}</div>`;
     }
   }
 
-  // Scan button
-  scanStyleBtn.addEventListener('click', scanAndAnalyzeStyle);
+  connectGmailBtn.addEventListener('click', connectAndScan);
+
   rescanStyleBtn.addEventListener('click', () => {
     styleActionsRow.style.display = 'none';
     styleResult.innerHTML = '';
-    styleConsent.style.display = 'block';
-    scanAndAnalyzeStyle();
+    connectAndScan();
   });
 
   // Clear style
-  clearStyleBtn.addEventListener('click', () => {
+  clearStyleBtn.addEventListener('click', async () => {
     userStyleProfile = '';
-    browser.storage.local.remove('claudeStyleProfile');
+    await browser.storage.local.remove('claudeStyleProfile');
+    await browser.runtime.sendMessage({ action: 'logout' });
     styleStatus.textContent = '';
     styleStatus.className = '';
     styleResult.innerHTML = '<div class="style-success">Style cleared. Claude will use default writing style.</div>';
     styleActionsRow.style.display = 'none';
     setTimeout(() => {
       styleResult.innerHTML = '';
-      styleConsent.style.display = 'block';
+      styleConnect.style.display = 'block';
     }, 2000);
   });
 

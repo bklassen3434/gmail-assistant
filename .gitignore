@@ -1,17 +1,22 @@
-# Packages
-*.zip
-*.xpi
-
-# OS files
+# macOS
 .DS_Store
-Thumbs.db
+.AppleDouble
+.LSOverride
 
-# Editor files
+# Firefox extension artifacts
+*.xpi
+*.zip
+web-ext-artifacts/
+
+# IDE
+.idea/
+.vscode/
 *.swp
 *.swo
-*~
-.vscode/
-.idea/
 
-# Build artifacts
-web-ext-artifacts/
+# Logs
+*.log
+
+# Local development
+.env
+.env.local
