@@ -2,6 +2,10 @@
 
 A Firefox extension that adds a Claude AI sidebar to Gmail for drafting and improving emails.
 
+## Demo
+
+https://github.com/user-attachments/assets/YOUR_VIDEO_ID_HERE
+
 ## Features
 
 - Compose new emails or reply to existing ones with AI assistance
